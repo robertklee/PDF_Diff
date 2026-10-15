@@ -16,16 +16,18 @@ python3 -m venv .venv
 pdfdiff OLD.pdf NEW.pdf                      # terminal report
 pdfdiff OLD.pdf NEW.pdf -f term,json -o out  # also write out/OLD_vs_NEW.diff.json
 pdfdiff OLD.pdf NEW.pdf -f pdf,combined      # annotated PDFs (see below)
+pdfdiff OLD.pdf NEW.pdf -f html              # side-by-side report for a browser
 ```
 
 | Option | Description |
 |---|---|
-| `-f, --format` | Comma-separated output formats: `term`, `json`, `pdf`, `combined` (default: `term`). |
+| `-f, --format` | Comma-separated output formats: `term`, `json`, `pdf`, `combined`, `html` (default: `term`). |
 | `-o, --output-dir` | Directory for file outputs (default: current directory). |
 | `--ignore-case` | Ignore letter case. |
 | `--ignore-punctuation` | Ignore punctuation. |
 | `--no-dehyphenate` | Don't join words that are hyphenated across a line break. |
 | `--page-threshold F` | Report a page as inserted/deleted when at most this fraction of its words match the other document (default: `0.2`). |
+| `--dpi N` | Resolution of the page images in the HTML report, 36 to 600 (default: `96`). |
 | `--password-old`, `--password-new` | Passwords for encrypted PDFs. |
 | `--no-color` | Disable colored output. Setting `NO_COLOR` does the same. |
 
@@ -59,6 +61,7 @@ Exit codes: `0` = no differences, `1` = differences found, `2` = error.
 | `json` | `OLD_vs_NEW.diff.json` | Machine-readable change list (see below). |
 | `pdf` | `OLD_vs_NEW.diff.old.pdf`, `OLD_vs_NEW.diff.new.pdf` | Copies of each input with the changes annotated. |
 | `combined` | `OLD_vs_NEW.diff.combined.pdf` | A summary page listing every change (each entry links to its page), then the matching old and new pages side by side, one pair per page. |
+| `html` | `OLD_vs_NEW.diff.html` | A single-file report: the change list on the left, and the old and new pages side by side on the right. |
 
 In the annotated PDFs:
 
@@ -71,9 +74,23 @@ In the annotated PDFs:
   original page content, which is otherwise unchanged.
 - Rotated pages and pages with a crop box are handled.
 
+The HTML report:
+
+- Shows matching old and new pages in the same row, so both sides always scroll
+  together. Missing pages appear as placeholders.
+- Lets you click a change in the list (or press `n`/`p`, or `j`/`k`) to jump to it.
+  Clicking a highlight selects it in the list.
+- Can filter changes by type and zoom in or out.
+- Is a single file with no external resources. Its Content-Security-Policy blocks all
+  network access. Page images need JavaScript, which is inline.
+- Stores identical page images once and saves pages without color as grayscale, to keep
+  the file small. A 500-page pair is about 26 MB at the default `--dpi 96`.
+  Use a lower `--dpi` for smaller files.
+
 If an input is encrypted, its annotated copy keeps the same encryption. The combined PDF
 is encrypted with AES-256 using the old document's password (or the new one's if only
-that document is encrypted).
+that document is encrypted). The JSON and HTML outputs are not encrypted, so store them
+accordingly.
 
 ## JSON output
 
@@ -107,7 +124,6 @@ disabled (`pytest-socket`).
 
 ## Roadmap
 
-- Side-by-side HTML report.
 - Ignoring headers and footers, and performance work.
 - Later: formatting changes, image changes, visual diff.
 

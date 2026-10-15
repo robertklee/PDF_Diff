@@ -13,9 +13,9 @@ from . import __version__
 from .compare import compare
 from .extract import PDFError
 from .model import CompareOptions
-from .render import jsonfmt, pdf, term
+from .render import html, jsonfmt, pdf, term
 
-FORMATS = ("term", "json", "pdf", "combined")
+FORMATS = ("term", "json", "pdf", "combined", "html")
 
 
 def _formats(value: str) -> list[str]:
@@ -38,6 +38,16 @@ def _fraction(value: str) -> float:
     return f
 
 
+def _dpi(value: str) -> int:
+    try:
+        d = int(value)
+    except ValueError:
+        d = 0
+    if not 36 <= d <= 600:
+        raise argparse.ArgumentTypeError(f"must be an integer from 36 to 600: {value!r}")
+    return d
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="pdfdiff",
@@ -49,7 +59,8 @@ def build_parser() -> argparse.ArgumentParser:
         "-f", "--format", type=_formats, default=["term"],
         help="comma-separated output formats (default: term): term = terminal report, "
         "json = change list, pdf = annotated copies of both PDFs, "
-        "combined = one side-by-side PDF with a linked summary",
+        "combined = one side-by-side PDF with a linked summary, "
+        "html = self-contained side-by-side report",
     )
     p.add_argument(
         "-o", "--output-dir", default=".",
@@ -66,6 +77,10 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="FRACTION",
         help="report a page as inserted/deleted when at most this fraction of its words "
         "match the other document (default: %(default)s)",
+    )
+    p.add_argument(
+        "--dpi", type=_dpi, default=html.DEFAULT_DPI,
+        help="resolution of page images in the HTML report (default: %(default)s)",
     )
     p.add_argument("--password-old", help="password for the old PDF")
     p.add_argument("--password-new", help="password for the new PDF")
@@ -110,6 +125,9 @@ def main(argv: list[str] | None = None) -> int:
         if "combined" in args.format:
             pdf.write_combined(result, out("combined.pdf"))
             written.append(out("combined.pdf"))
+        if "html" in args.format:
+            html.write(result, out("html"), dpi=args.dpi)
+            written.append(out("html"))
     except (OSError, RuntimeError, ValueError) as e:
         print(f"pdfdiff: error: cannot write output: {e}", file=sys.stderr)
         return 2
