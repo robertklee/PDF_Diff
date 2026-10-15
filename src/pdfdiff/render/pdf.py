@@ -243,8 +243,8 @@ def _show_page(page: pymupdf.Page, cell: pymupdf.Rect, src_doc, src: pymupdf.Pag
         src.set_rotation(0)
     try:
         page.show_pdf_page(cell, src_doc, src.number, rotate=-rot)
-    except ValueError:
-        pass  # source page has no content (blank)
+    except Exception:
+        pass  # source page is blank (ValueError) or damaged: leave the cell empty
 
 
 def _fit_matrix(src: pymupdf.Page, cell: pymupdf.Rect) -> pymupdf.Matrix:

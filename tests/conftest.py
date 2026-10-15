@@ -29,11 +29,25 @@ def para(seed: int, n: int = 60) -> str:
     return " ".join(rng.choice(_VOCAB) + str(seed) * (i % 3 == 0) for i in range(n)) + "."
 
 
-def make_pdf(path: Path, pages: list[list[str]], *, password: str | None = None) -> Path:
-    """Write a PDF where each page is a list of paragraphs (one text block each)."""
+def make_pdf(
+    path: Path,
+    pages: list[list[str]],
+    *,
+    password: str | None = None,
+    header: str | None = None,
+    footer: str | None = None,
+) -> Path:
+    """Write a PDF where each page is a list of paragraphs (one text block each).
+
+    ``header``/``footer`` are drawn on every page; ``{n}`` and ``{total}`` are replaced
+    by the page number and count.
+    """
     doc = pymupdf.open()
-    for paragraphs in pages:
+    for n, paragraphs in enumerate(pages, 1):
         page = doc.new_page(width=612, height=792)
+        for text, y in ((header, 40), (footer, 770)):
+            if text:
+                page.insert_text((72, y), text.format(n=n, total=len(pages)), fontsize=9, fontname="helv")
         y = 72.0
         for para in paragraphs:
             rect = pymupdf.Rect(72, y, 540, 760)

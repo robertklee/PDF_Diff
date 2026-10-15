@@ -19,21 +19,30 @@ from html import escape
 
 import pymupdf
 
-from ..model import Change, DiffResult, PageChange
+from .. import parallel
+from ..extract import quiet_mupdf
+from ..model import Change, DiffResult, Document, PageChange
 from .pdf import COLORS, LABELS, Mark, _open, _pages, collect_marks
 from .term import summary_line
 
 DEFAULT_DPI = 96
 MAX_PIXELS = 2400  # cap on the longer side of a rendered page image
 MAX_TEXT = 400
+_MIN_CHUNK = 10  # pages per rendering task
+PARALLEL_MIN_PAGES = 40
 
 
-def write(result: DiffResult, out: str, dpi: int = DEFAULT_DPI) -> None:
+def write(result: DiffResult, out: str, dpi: int = DEFAULT_DPI, jobs: int | None = None) -> None:
+    """Write the report. ``jobs`` limits the worker processes used to render page
+    images (None = automatic, 1 = none)."""
+    report = render(result, dpi, jobs)
     with open(out, "w", encoding="utf-8") as f:
-        f.write(render(result, dpi))
+        f.write(report)
 
 
-def render(result: DiffResult, dpi: int = DEFAULT_DPI) -> str:
+def render(result: DiffResult, dpi: int = DEFAULT_DPI, jobs: int | None = None) -> str:
+    pngs = _render_all([result.old, result.new], dpi, jobs)
+    pngs = {"old": pngs[0], "new": pngs[1]}
     marks = {"old": collect_marks(result, "old"), "new": collect_marks(result, "new")}
     gone = {
         "old": {pc.page: pc for pc in result.page_changes if pc.kind == "page_deleted"},
@@ -58,8 +67,9 @@ def render(result: DiffResult, dpi: int = DEFAULT_DPI) -> str:
                     cells.append((side, _placeholder(side, pnos[other], gone[other], sizes[other], max_w)))
                     continue
                 page = docs[side][pno]
+                img = images.add(pngs[side][pno])
                 cells.append(
-                    (side, _page_cell(side, page, marks[side].get(pno, []), gone[side].get(pno), max_w, dpi, first_mark, images))
+                    (side, _page_cell(side, page, img, marks[side].get(pno, []), gone[side].get(pno), max_w, first_mark))
                 )
             body = dict(cells)
             rows.append(f'<section class="row" id="row-{r}">{body["old"]}{body["new"]}</section>')
@@ -107,19 +117,51 @@ class _Images:
         return json.dumps(self._uris)
 
 
+def _render_all(docs: list[Document], dpi: int, jobs: int | None) -> list[list[bytes]]:
+    """PNG images of every page of each document, rendered in parallel when worthwhile."""
+    total = sum(d.page_count for d in docs)
+    workers = parallel.worker_count(jobs, total, _MIN_CHUNK)
+    if workers > 1 and total >= PARALLEL_MIN_PAGES:
+        tasks = [
+            (i, (d.path, d.password, start, stop, dpi))
+            for i, d in enumerate(docs)
+            for start, stop in parallel.chunks(d.page_count, workers, _MIN_CHUNK)
+        ]
+        parts = parallel.run(_render_range, [t for _, t in tasks], workers)
+        if parts is not None:
+            out: list[list[bytes]] = [[] for _ in docs]
+            for (i, _), part in zip(tasks, parts):
+                out[i].extend(part)
+            return out
+    return [_render_range(d.path, d.password, 0, d.page_count, dpi) for d in docs]
+
+
+def _render_range(path: str, password: str | None, start: int, stop: int, dpi: int) -> list[bytes]:
+    quiet_mupdf()
+    with pymupdf.open(path, filetype="pdf") as doc:
+        if doc.needs_pass:
+            doc.authenticate(password or "")
+        return [_render_png(doc[pno], dpi) for pno in range(start, stop)]
+
+
 def _render_png(page: pymupdf.Page, dpi: int) -> bytes:
     rect = page.rect  # displayed (rotated) size
     zoom = min(dpi / 72, MAX_PIXELS / max(rect.width, rect.height, 1))
-    pix = page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom), alpha=False, annots=False)
+    try:
+        pix = page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom), alpha=False, annots=False)
+    except Exception:  # damaged page: show it blank rather than fail the report
+        size = (rect * pymupdf.Matrix(zoom, zoom)).irect
+        pix = pymupdf.Pixmap(pymupdf.csGRAY, pymupdf.IRect(0, 0, max(size.width, 1), max(size.height, 1)), False)
+        pix.clear_with(255)
+        return pix.tobytes("png")
     s = pix.samples
     if s[0::3] == s[1::3] == s[2::3]:  # no color on the page: a gray PNG is much smaller
         pix = pymupdf.Pixmap(pymupdf.csGRAY, pix)
     return pix.tobytes("png")
 
 
-def _page_cell(side, page: pymupdf.Page, marks: list[Mark], pc: PageChange | None, max_w, dpi, first_mark, images) -> str:
+def _page_cell(side, page: pymupdf.Page, img: int, marks: list[Mark], pc: PageChange | None, max_w, first_mark) -> str:
     rect = page.rect  # displayed (rotated) size
-    img = images.add(_render_png(page, dpi))
 
     rot = page.rotation_matrix
     overlays = []

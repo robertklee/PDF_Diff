@@ -11,7 +11,7 @@ import sys
 
 from . import __version__
 from .compare import compare
-from .extract import PDFError
+from .extract import PDFError, quiet_mupdf
 from .model import CompareOptions
 from .render import html, jsonfmt, pdf, term
 
@@ -48,6 +48,26 @@ def _dpi(value: str) -> int:
     return d
 
 
+def _margins(value: str) -> tuple[float, float]:
+    try:
+        top, bottom = (float(v) for v in value.split(","))
+    except ValueError:
+        top = bottom = -1.0
+    if top < 0 or bottom < 0:
+        raise argparse.ArgumentTypeError(f"expected TOP,BOTTOM in points, e.g. 50,40: {value!r}")
+    return (top, bottom)
+
+
+def _jobs(value: str) -> int:
+    try:
+        n = int(value)
+    except ValueError:
+        n = 0
+    if n < 1:
+        raise argparse.ArgumentTypeError(f"must be a positive integer: {value!r}")
+    return n
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="pdfdiff",
@@ -73,6 +93,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="do not join words hyphenated across line breaks",
     )
     p.add_argument(
+        "--ignore-header-footer", action="store_true",
+        help="ignore running headers, footers and page numbers (detected automatically)",
+    )
+    p.add_argument(
+        "--margins", type=_margins, metavar="TOP,BOTTOM",
+        help="ignore all text within TOP and BOTTOM points of the page edges "
+        "(instead of detecting headers and footers)",
+    )
+    p.add_argument(
         "--page-threshold", type=_fraction, default=CompareOptions.page_threshold,
         metavar="FRACTION",
         help="report a page as inserted/deleted when at most this fraction of its words "
@@ -81,6 +110,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--dpi", type=_dpi, default=html.DEFAULT_DPI,
         help="resolution of page images in the HTML report (default: %(default)s)",
+    )
+    p.add_argument(
+        "-j", "--jobs", type=_jobs, default=None, metavar="N",
+        help="worker processes for text extraction and page rendering (default: automatic; 1 = none)",
     )
     p.add_argument("--password-old", help="password for the old PDF")
     p.add_argument("--password-new", help="password for the new PDF")
@@ -97,14 +130,33 @@ def _output_name(old: str, new: str, ext: str) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    try:
+        return _run(args)
+    except KeyboardInterrupt:
+        print("pdfdiff: interrupted", file=sys.stderr)
+        return 130
+    except Exception as e:
+        if os.environ.get("PDFDIFF_DEBUG"):
+            raise
+        print(
+            f"pdfdiff: internal error: {type(e).__name__}: {e} (set PDFDIFF_DEBUG=1 for details)",
+            file=sys.stderr,
+        )
+        return 2
+
+
+def _run(args: argparse.Namespace) -> int:
+    quiet_mupdf()
+    header_footer = args.margins or ("auto" if args.ignore_header_footer else None)
     options = CompareOptions(
         ignore_case=args.ignore_case,
         ignore_punctuation=args.ignore_punctuation,
         dehyphenate=not args.no_dehyphenate,
         page_threshold=args.page_threshold,
+        header_footer=header_footer,
     )
     try:
-        result = compare(args.old, args.new, options, args.password_old, args.password_new)
+        result = compare(args.old, args.new, options, args.password_old, args.password_new, jobs=args.jobs)
     except PDFError as e:
         print(f"pdfdiff: error: {e}", file=sys.stderr)
         return 2
@@ -126,7 +178,7 @@ def main(argv: list[str] | None = None) -> int:
             pdf.write_combined(result, out("combined.pdf"))
             written.append(out("combined.pdf"))
         if "html" in args.format:
-            html.write(result, out("html"), dpi=args.dpi)
+            html.write(result, out("html"), dpi=args.dpi, jobs=args.jobs)
             written.append(out("html"))
     except (OSError, RuntimeError, ValueError) as e:
         print(f"pdfdiff: error: cannot write output: {e}", file=sys.stderr)
@@ -137,6 +189,8 @@ def main(argv: list[str] | None = None) -> int:
     if "term" in args.format:
         term.print_report(result, sys.stdout, color=False if args.no_color else None)
     else:
+        for w in result.warnings:
+            print(f"pdfdiff: warning: {w}", file=sys.stderr)
         print(term.summary_line(result), file=sys.stderr)
 
     return 0 if result.identical else 1

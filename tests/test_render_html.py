@@ -5,7 +5,7 @@ import re
 import pymupdf
 import pytest
 
-from pdfdiff import compare
+from pdfdiff import compare, parallel
 from pdfdiff.cli import main
 from pdfdiff.render import html
 
@@ -153,3 +153,16 @@ def test_cli_rejects_bad_dpi(edited, dpi, capsys):
     with pytest.raises(SystemExit) as e:
         main([str(edited[0]), str(edited[1]), "--dpi", dpi])
     assert e.value.code == 2
+
+
+def test_parallel_rendering_matches_serial(pdf, monkeypatch):
+    monkeypatch.setattr(html, "PARALLEL_MIN_PAGES", 1)
+    monkeypatch.setattr(html, "_MIN_CHUNK", 1)
+    a = pdf([[para(i)] for i in range(3)], password="pw")
+    b = pdf([[para(i)] for i in (0, 9, 2)])
+    r = compare(a, b, old_password="pw")
+    used = []
+    real = parallel.run
+    monkeypatch.setattr(parallel, "run", lambda *args: used.append(real(*args)) or used[-1])
+    assert html.render(r, jobs=3) == html.render(r, jobs=1)
+    assert used and used[0] is not None  # really rendered in worker processes

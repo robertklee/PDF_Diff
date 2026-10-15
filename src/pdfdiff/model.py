@@ -39,12 +39,24 @@ class Token:
         return (self.words[0].page, self.words[0].block)
 
 
+Matrix = tuple[float, float, float, float, float, float]
+
+
 @dataclass
 class Page:
     index: int
-    width: float
+    width: float  # displayed size (after /Rotate)
     height: float
     words: list[Word]
+    # Maps word coordinates (unrotated page space) to displayed page space.
+    matrix: Matrix = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
+
+    def displayed(self, bbox: BBox) -> BBox:
+        a, b, c, d, e, f = self.matrix
+        x0, y0, x1, y1 = bbox
+        xs = (a * x0 + c * y0 + e, a * x1 + c * y1 + e)
+        ys = (b * x0 + d * y0 + f, b * x1 + d * y1 + f)
+        return (min(xs), min(ys), max(xs), max(ys))
 
     @property
     def has_text(self) -> bool:
@@ -57,6 +69,8 @@ class Document:
     pages: list[Page]
     # Kept so renderers can reopen encrypted files.
     password: str | None = field(default=None, repr=False)
+    # Problems found while reading, e.g. "page 3: text extraction failed (...)".
+    warnings: list[str] = field(default_factory=list)
 
     @property
     def page_count(self) -> int:
@@ -71,6 +85,9 @@ class CompareOptions:
     # A page is reported as inserted/deleted when at most this fraction of its
     # words match the other document.
     page_threshold: float = 0.2
+    # Ignore running headers and footers: None (off), "auto" (detect repeated
+    # lines near the top and bottom of pages) or (top, bottom) margins in points.
+    header_footer: str | tuple[float, float] | None = None
 
 
 ChangeKind = Literal["insert", "delete", "replace"]

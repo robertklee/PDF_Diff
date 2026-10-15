@@ -26,12 +26,38 @@ pdfdiff OLD.pdf NEW.pdf -f html              # side-by-side report for a browser
 | `--ignore-case` | Ignore letter case. |
 | `--ignore-punctuation` | Ignore punctuation. |
 | `--no-dehyphenate` | Don't join words that are hyphenated across a line break. |
+| `--ignore-header-footer` | Ignore running headers and footers, detected automatically (see below). |
+| `--margins TOP,BOTTOM` | Ignore all text within this many points of the top and bottom page edges, e.g. `50,40`. Overrides `--ignore-header-footer`. |
 | `--page-threshold F` | Report a page as inserted/deleted when at most this fraction of its words match the other document (default: `0.2`). |
 | `--dpi N` | Resolution of the page images in the HTML report, 36 to 600 (default: `96`). |
 | `--password-old`, `--password-new` | Passwords for encrypted PDFs. |
+| `-j, --jobs N` | Worker processes for text extraction and page rendering (default: automatic, up to 8; `1` = none). |
 | `--no-color` | Disable colored output. Setting `NO_COLOR` does the same. |
 
-Exit codes: `0` = no differences, `1` = differences found, `2` = error.
+Exit codes: `0` = no differences, `1` = differences found, `2` = error, `130` = interrupted.
+
+Warnings, such as damaged pages whose text may be incomplete, are shown in the terminal
+report and stored in the JSON and HTML outputs. Without `term` output they are printed
+to stderr. An unexpected error prints a one-line message; set `PDFDIFF_DEBUG=1` to get
+the full traceback.
+
+### Headers and footers
+
+`--ignore-header-footer` removes a line before comparing when:
+
+- it lies in the top or bottom 12% of the displayed page, and
+- the same line appears at about the same height (within 6 pt) on at least 3 pages
+  of the same document (2 pages if the document has 3 or fewer pages with text).
+
+Digits and single Roman numerals are ignored when matching lines, so "Page 3 of 10" and
+"Page 4 of 10" count as the same line. As a trade-off, a change that only affects the
+numbers in such a line is not reported.
+
+### Performance
+
+When the two documents have 100 or more pages in total, their text is read in parallel, and the HTML report's page images
+are rendered in parallel. On a 1000-page pair (about 360k words per document) a full
+compare takes about 2.7 s, and about 5 s with `-f html`.
 
 ## How it works
 
@@ -96,6 +122,8 @@ accordingly.
 
 Schema version 1:
 
+- `options`: the comparison options used, including `header_footer`.
+- `warnings[]`: problems found while reading the documents.
 - `summary`: change counts, including `pages_inserted` and `pages_deleted`.
 - `page_changes[]`: whole-page changes, with:
   - `kind`: `page_inserted` or `page_deleted`.
@@ -124,8 +152,10 @@ disabled (`pytest-socket`).
 
 ## Roadmap
 
-- Ignoring headers and footers, and performance work.
-- Later: formatting changes, image changes, visual diff.
+- Formatting changes (font, size, color).
+- Image changes and a pixel-level visual diff.
+- Detecting moved text.
+- Local OCR for scanned pages.
 
 ## License note
 
