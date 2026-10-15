@@ -54,7 +54,7 @@ def _doc(doc: Document) -> dict:
     }
 
 
-def _side(text: str, words: list[Word], pages: list[int], anchor: Word | None) -> dict:
+def _side(text: str, words: list[Word], pages: list[int], anchor: Word | None, caret_x: float | None) -> dict:
     side: dict = {
         "text": text,
         "pages": [p + 1 for p in pages],
@@ -65,6 +65,8 @@ def _side(text: str, words: list[Word], pages: list[int], anchor: Word | None) -
     }
     if anchor is not None:
         side["anchor"] = {"page": anchor.page + 1, "bbox": [round(v, 2) for v in anchor.bbox]}
+        if caret_x is not None:
+            side["anchor"]["caret_x"] = round(caret_x, 2)
     return side
 
 
@@ -72,8 +74,8 @@ def _change(c: Change) -> dict:
     return {
         "id": c.id,
         "kind": c.kind,
-        "old": _side(c.old_text, c.old_words, c.old_pages, c.old_anchor),
-        "new": _side(c.new_text, c.new_words, c.new_pages, c.new_anchor),
+        "old": _side(c.old_text, c.old_words, c.old_pages, c.old_anchor, c.old_caret_x),
+        "new": _side(c.new_text, c.new_words, c.new_pages, c.new_anchor, c.new_caret_x),
         "context": {"before": c.context_before, "after": c.context_after},
     }
 

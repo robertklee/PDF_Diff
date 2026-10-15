@@ -62,15 +62,20 @@ compare takes about 2.7 s, and about 5 s with `-f html`.
 ## How it works
 
 1. **Extract:** read every word and its bounding box with PyMuPDF, in content order.
+   Short pieces of text drawn separately from their row, such as the "X" in a filled-in
+   checkbox, are moved into the row they sit on, and each row is read left to right.
 2. **Normalize:** expand ligatures, unify quotes and dashes, rejoin words hyphenated across
    a line break, and apply the optional case and punctuation folding.
 3. **Diff, block level:** compare paragraphs (text blocks) first.
 4. **Diff, word level:** compare words inside the blocks that changed. Large inputs are
    first split using patience-diff anchors so the comparison stays fast.
    Text that reflows across page breaks is not reported as a change.
-5. **Clean up:** short coincidental matches between edits (such as a lone "the") are
+5. **Break ties by position:** when two alignments are equally good, short repeated
+   text (such as checkbox marks) is matched to the copy at the same place on the page.
+   So a mark that moved from "Yes" to "No" is reported on those two boxes.
+6. **Clean up:** short coincidental matches between edits (such as a lone "the") are
    absorbed, so each change reads as a whole.
-6. **Pages:** detected *after* the text diff, so reflowed text never causes a false page
+7. **Pages:** detected *after* the text diff, so reflowed text never causes a false page
    insertion.
    - A page counts as inserted or deleted when at most 20% (`--page-threshold`) of its
      words match the other document. Its text is then reported as a page change, not
@@ -135,7 +140,9 @@ Schema version 1:
 - `changes[]`: one entry per text change, with:
   - `kind`: `insert`, `delete`, or `replace`.
   - `old` and `new`: the text, pages, and one rectangle per line.
-  - `anchor`: the location of an insertion or deletion point, on the side that has no text.
+  - `anchor`: the location of an insertion or deletion point, on the side that has no text:
+    the neighbouring word's `page` and `bbox`, plus `caret_x` when the point lies in a gap
+    on that row (for example an empty checkbox).
   - `context`: surrounding text.
 
 Page numbers are 1-based. Bounding boxes are `[x0, y0, x1, y1]` in PDF points,

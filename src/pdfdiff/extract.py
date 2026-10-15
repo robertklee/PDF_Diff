@@ -11,6 +11,7 @@ import os
 import pymupdf
 
 from . import parallel
+from .layout import reading_order
 from .model import Document, Page, Word
 
 # Below this many pages in total, process start-up costs more than it saves.
@@ -137,7 +138,7 @@ def _build(path: str, password: str | None, raw: list[_RawPage]) -> Document:
                 index=pno,
                 width=width,
                 height=height,
-                words=[Word(w[4], pno, (w[0], w[1], w[2], w[3]), w[5], w[6]) for w in words],
+                words=[Word(w[4], pno, (w[0], w[1], w[2], w[3]), w[5], w[6]) for w in reading_order(words)],
                 matrix=matrix,
             )
         )

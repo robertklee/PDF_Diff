@@ -64,8 +64,10 @@ def collect_marks(result: DiffResult, side: str) -> dict[int, list[Mark]]:
         after = ch.old_anchor_after if side == "old" else ch.new_anchor_after
         if anchor is None:
             continue
+        caret_x = ch.old_caret_x if side == "old" else ch.new_caret_x
         x0, y0, x1, y1 = anchor.bbox
-        marks[anchor.page].append(Mark(ch.id, ch.kind, [], (x1 if after else x0, y0, y1), note))
+        x = caret_x if caret_x is not None else (x1 if after else x0)
+        marks[anchor.page].append(Mark(ch.id, ch.kind, [], (x, y0, y1), note))
     return marks
 
 

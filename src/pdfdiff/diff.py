@@ -16,13 +16,17 @@ from collections import Counter
 from difflib import SequenceMatcher
 from typing import Hashable, Sequence
 
-from .model import Change, Token, Word
+from .model import BBox, Change, Token, Word
 
 Opcode = tuple[str, int, int, int, int]
 
 # Above this n*m product, split on patience anchors before using SequenceMatcher.
 _DIRECT_LIMIT = 250_000
 _CONTEXT_TOKENS = 6
+# Matched tokens this short are checked for a plausible position (see _misplaced).
+_SHORT_TOKEN = 3
+_GEOMETRY_PASSES = 3
+_MAX_SINGLE_TRIES = 8
 
 
 def diff_sequences(a: Sequence[Hashable], b: Sequence[Hashable]) -> list[Opcode]:
@@ -186,9 +190,94 @@ def token_opcodes(old: list[Token], new: list[Token]) -> list[Opcode]:
         if tag == "equal":
             ops.append(("equal", i1, i2, j1, j2))
         else:
-            for wt, wi1, wi2, wj1, wj2 in diff_sequences(onorm[i1:i2], nnorm[j1:j2]):
+            for wt, wi1, wi2, wj1, wj2 in _word_diff(old, new, onorm, nnorm, i1, i2, j1, j2):
                 ops.append((wt, wi1 + i1, wi2 + i1, wj1 + j1, wj2 + j1))
     return cleanup_semantic(ops)
+
+
+def _word_diff(old, new, onorm, nnorm, i1, i2, j1, j2) -> list[Opcode]:
+    """Word-level diff of one changed region, using positions to break ties.
+
+    Equal-cost alignments are common with short repeated text: old "X Yes No" vs new
+    "Yes X No" can keep either the X or the "Yes". When a short token is matched to a
+    copy at a position that disagrees with its neighbours' matches (such as a checkbox
+    mark that moved to another box), the match is forbidden and the region re-diffed.
+    The new alignment is kept only if it is no more costly, so text that merely
+    re-wrapped is unaffected.
+    """
+    a, b = onorm[i1:i2], nnorm[j1:j2]
+    wops = diff_sequences(a, b)
+    if len(a) * len(b) > _DIRECT_LIMIT:  # large rewrites: not worth re-diffing
+        return wops
+    for _ in range(_GEOMETRY_PASSES):
+        bad = _misplaced(old, new, wops, i1, j1)
+        if not bad:
+            break
+        cost = _cost(wops)
+        tries = [bad] + ([[p] for p in bad] if 1 < len(bad) <= _MAX_SINGLE_TRIES else [])
+        improved = False
+        for pairs in tries:
+            ta, tb = list(a), list(b)
+            for i, j in pairs:
+                ta[i - i1] = f"\x01{i}"  # unique keys can't match anything
+                tb[j - j1] = f"\x02{j}"
+            tops = diff_sequences(ta, tb)
+            if _cost(tops) <= cost:
+                a, b, wops, improved = ta, tb, tops, True
+                break
+        if not improved:
+            break
+    return wops
+
+
+def _cost(ops: list[Opcode]) -> int:
+    return sum(i2 - i1 + j2 - j1 for tag, i1, i2, j1, j2 in ops if tag != "equal")
+
+
+def _misplaced(old, new, wops: list[Opcode], i1: int, j1: int) -> list[tuple[int, int]]:
+    """Matched pairs of short tokens whose displacement (new position minus old) agrees
+    with none of the reference matches on the same pages: the neighbouring matches and
+    the nearest matches of longer tokens on either side."""
+    pairs = [(i + i1, j + j1) for tag, a1, a2, b1, b2 in wops if tag == "equal" for i, j in zip(range(a1, a2), range(b1, b2))]
+    if len(pairs) < 2:
+        return []
+    is_long = [len(old[i].norm) > _SHORT_TOKEN for i, _ in pairs]
+    prev_long, next_long = [-1] * len(pairs), [-1] * len(pairs)
+    last = -1
+    for k in range(len(pairs)):
+        prev_long[k] = last
+        if is_long[k]:
+            last = k
+    last = -1
+    for k in range(len(pairs) - 1, -1, -1):
+        next_long[k] = last
+        if is_long[k]:
+            last = k
+
+    def shift(k):
+        i, j = pairs[k]
+        wo, wn = old[i].words[0], new[j].words[0]
+        return (wo.page, wn.page), wn.bbox[0] - wo.bbox[0], wn.bbox[1] - wo.bbox[1], wo.bbox[3] - wo.bbox[1]
+
+    bad = []
+    for k, (i, j) in enumerate(pairs):
+        if is_long[k]:
+            continue
+        pages, dx, dy, h = shift(k)
+        tol = max(h, 6.0)
+        seen = False
+        for nk in {k - 1, k + 1, prev_long[k], next_long[k]} - {-1}:
+            if 0 <= nk < len(pairs):
+                npages, ndx, ndy, _ = shift(nk)
+                if npages != pages:
+                    continue
+                seen = True
+                if abs(dx - ndx) <= tol and abs(dy - ndy) <= tol:
+                    break
+        else:
+            if seen:
+                bad.append((i, j))
+    return bad
 
 
 def diff_tokens(
@@ -247,6 +336,8 @@ def diff_tokens(
                     new_anchor=new_anchor,
                     old_anchor_after=old_after,
                     new_anchor_after=new_after,
+                    old_caret_x=None if otoks else _caret_x(old, i1, i2, skip_old_pages, ntoks),
+                    new_caret_x=None if ntoks else _caret_x(new, j1, j2, skip_new_pages, otoks),
                     context_before=before if n == 0 else "",
                     context_after=after if n == len(pieces) - 1 else "",
                 )
@@ -272,6 +363,29 @@ def _kept_runs(
     if start is not None:
         runs.append((start, hi))
     return runs
+
+
+def _same_row(a: BBox, b: BBox) -> bool:
+    ha, hb = a[3] - a[1], b[3] - b[1]
+    return ha > 0 and hb > 0 and min(a[3], b[3]) - max(a[1], b[1]) >= 0.5 * min(ha, hb)
+
+
+def _caret_x(
+    tokens: list[Token], lo: int, hi: int, skip_pages: frozenset[int], other: list[Token]
+) -> float | None:
+    """x position for a caret between tokens[lo-1] and tokens[hi] when the text on the
+    other side sits in the gap between them (same row, same layout), e.g. a checkbox
+    mark or a form field value. None means: use the anchor word's edge."""
+    if not other or lo == 0 or hi >= len(tokens):
+        return None
+    prev, nxt = tokens[lo - 1].words[-1], tokens[hi].words[0]
+    if prev.page != nxt.page or prev.page in skip_pages or not _same_row(prev.bbox, nxt.bbox):
+        return None
+    w = other[0].words[0]
+    tol = 1.0
+    if _same_row(w.bbox, prev.bbox) and prev.bbox[2] - tol <= w.bbox[0] and w.bbox[2] <= nxt.bbox[0] + tol:
+        return w.bbox[0]
+    return None
 
 
 def _anchor(

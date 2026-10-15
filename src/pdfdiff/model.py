@@ -100,7 +100,8 @@ class Change:
     ``old_tokens`` is empty for inserts and ``new_tokens`` is empty for deletes.
     The empty side gets an anchor word marking where the change happens: the
     change is right after the anchor when ``*_anchor_after`` is true, else right
-    before it.
+    before it. ``*_caret_x`` overrides the anchor's x position when the change point
+    sits in a gap between two words on the same row, such as an empty form field.
     """
 
     id: int
@@ -111,6 +112,8 @@ class Change:
     new_anchor: Word | None = None
     old_anchor_after: bool = True
     new_anchor_after: bool = True
+    old_caret_x: float | None = None
+    new_caret_x: float | None = None
     context_before: str = ""
     context_after: str = ""
 
