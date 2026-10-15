@@ -13,9 +13,9 @@ from . import __version__
 from .compare import compare
 from .extract import PDFError
 from .model import CompareOptions
-from .render import jsonfmt, term
+from .render import jsonfmt, pdf, term
 
-FORMATS = ("term", "json")
+FORMATS = ("term", "json", "pdf", "combined")
 
 
 def _formats(value: str) -> list[str]:
@@ -47,7 +47,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("new", help="revised PDF")
     p.add_argument(
         "-f", "--format", type=_formats, default=["term"],
-        help=f"comma-separated output formats: {', '.join(FORMATS)} (default: term)",
+        help="comma-separated output formats (default: term): term = terminal report, "
+        "json = change list, pdf = annotated copies of both PDFs, "
+        "combined = one side-by-side PDF with a linked summary",
     )
     p.add_argument(
         "-o", "--output-dir", default=".",
@@ -92,15 +94,27 @@ def main(argv: list[str] | None = None) -> int:
         print(f"pdfdiff: error: {e}", file=sys.stderr)
         return 2
 
+    def out(suffix: str) -> str:
+        return os.path.join(args.output_dir, _output_name(args.old, args.new, suffix))
+
+    written: list[str] = []
     try:
-        if "json" in args.format:
+        if any(f != "term" for f in args.format):
             os.makedirs(args.output_dir, exist_ok=True)
-            path = os.path.join(args.output_dir, _output_name(args.old, args.new, "json"))
-            jsonfmt.write(result, path)
-            print(f"wrote {path}", file=sys.stderr)
-    except OSError as e:
+        if "json" in args.format:
+            jsonfmt.write(result, out("json"))
+            written.append(out("json"))
+        if "pdf" in args.format:
+            pdf.write_annotated(result, out("old.pdf"), out("new.pdf"))
+            written += [out("old.pdf"), out("new.pdf")]
+        if "combined" in args.format:
+            pdf.write_combined(result, out("combined.pdf"))
+            written.append(out("combined.pdf"))
+    except (OSError, RuntimeError, ValueError) as e:
         print(f"pdfdiff: error: cannot write output: {e}", file=sys.stderr)
         return 2
+    for path in written:
+        print(f"wrote {path}", file=sys.stderr)
 
     if "term" in args.format:
         term.print_report(result, sys.stdout, color=False if args.no_color else None)

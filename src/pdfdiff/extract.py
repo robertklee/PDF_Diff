@@ -53,4 +53,4 @@ def load_document(path: str | os.PathLike, password: str | None = None) -> Docum
                     words=words,
                 )
             )
-    return Document(path=path, pages=pages)
+    return Document(path=path, pages=pages, password=password)

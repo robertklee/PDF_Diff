@@ -75,6 +75,14 @@ def test_cleanup_absorbs_short_coincidental_match():
     assert apply(a, b, ops) == b
 
 
+def test_cleanup_keeps_unchanged_sentence_next_to_big_edit():
+    sentence = "how vexingly quick daft zebras jump".split()
+    a = "x".split() + "old words here now gone".split() + sentence
+    b = "x".split() + "new".split() + sentence + [f"n{i}" for i in range(40)]
+    ops = diffmod.cleanup_semantic(diff_sequences(a, b))
+    assert ("equal", 6, 12, 2, 8) in ops
+
+
 def test_cleanup_keeps_meaningful_matches():
     a = "the quick brown fox jumps over the lazy dog".split()
     b = "the slow brown fox jumps over the sleepy dog".split()

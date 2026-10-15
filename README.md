@@ -15,11 +15,12 @@ python3 -m venv .venv
 ```sh
 pdfdiff OLD.pdf NEW.pdf                      # terminal report
 pdfdiff OLD.pdf NEW.pdf -f term,json -o out  # also write out/OLD_vs_NEW.diff.json
+pdfdiff OLD.pdf NEW.pdf -f pdf,combined      # annotated PDFs (see below)
 ```
 
 | Option | Description |
 |---|---|
-| `-f, --format` | Comma-separated output formats: `term`, `json` (default: `term`). |
+| `-f, --format` | Comma-separated output formats: `term`, `json`, `pdf`, `combined` (default: `term`). |
 | `-o, --output-dir` | Directory for file outputs (default: current directory). |
 | `--ignore-case` | Ignore letter case. |
 | `--ignore-punctuation` | Ignore punctuation. |
@@ -50,6 +51,29 @@ Exit codes: `0` = no differences, `1` = differences found, `2` = error.
      including blank pages. Their text is diffed, and only the surplus counts as
      inserted or deleted.
    - The old-to-new page map is the in-order pairing that shares the most matched words.
+
+## Output files
+
+| Format | File(s) | Contents |
+|---|---|---|
+| `json` | `OLD_vs_NEW.diff.json` | Machine-readable change list (see below). |
+| `pdf` | `OLD_vs_NEW.diff.old.pdf`, `OLD_vs_NEW.diff.new.pdf` | Copies of each input with the changes annotated. |
+| `combined` | `OLD_vs_NEW.diff.combined.pdf` | A summary page listing every change (each entry links to its page), then the matching old and new pages side by side, one pair per page. |
+
+In the annotated PDFs:
+
+- Changed text is highlighted: green for inserted, red for deleted, blue for replaced.
+  Each highlight has a note with the old and new text.
+- A caret marks where text was inserted or deleted on the side that doesn't have it.
+- Inserted and deleted pages get a frame and a banner. The neighbouring page in the other
+  document gets a note saying where the page was added or removed.
+- Annotations appear in any PDF viewer's comment list. They are added on top of the
+  original page content, which is otherwise unchanged.
+- Rotated pages and pages with a crop box are handled.
+
+If an input is encrypted, its annotated copy keeps the same encryption. The combined PDF
+is encrypted with AES-256 using the old document's password (or the new one's if only
+that document is encrypted).
 
 ## JSON output
 
@@ -83,7 +107,6 @@ disabled (`pytest-socket`).
 
 ## Roadmap
 
-- Annotated PDF output.
 - Side-by-side HTML report.
 - Ignoring headers and footers, and performance work.
 - Later: formatting changes, image changes, visual diff.

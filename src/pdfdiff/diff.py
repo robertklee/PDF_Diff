@@ -16,7 +16,7 @@ from collections import Counter
 from difflib import SequenceMatcher
 from typing import Hashable, Sequence
 
-from .model import Change, Token
+from .model import Change, Token, Word
 
 Opcode = tuple[str, int, int, int, int]
 
@@ -128,8 +128,9 @@ def _merge(ops: list[Opcode]) -> list[Opcode]:
 def cleanup_semantic(ops: list[Opcode]) -> list[Opcode]:
     """Absorb short coincidental matches (e.g. a lone "the") between two edits.
 
-    An equal run is absorbed when it is no longer than the larger side of the
-    edit on each side of it.
+    An equal run is absorbed when it is at most half as long as the larger side of
+    the edits on each side of it. So a stray word between two rewritten phrases is
+    absorbed, but an unchanged sentence next to a big edit is kept.
     """
     out: list[Opcode] = []
     for op in _merge(ops):
@@ -139,7 +140,7 @@ def cleanup_semantic(ops: list[Opcode]) -> list[Opcode]:
             and out[-1][0] != "equal"
             and out[-2][0] == "equal"
             and out[-3][0] != "equal"
-            and out[-2][2] - out[-2][1] <= min(_size(out[-3]), _size(out[-1]))
+            and 2 * (out[-2][2] - out[-2][1]) <= min(_size(out[-3]), _size(out[-1]))
         ):
             prev, _, nxt = out[-3:]
             ni1, ni2, nj1, nj2 = prev[1], nxt[2], prev[3], nxt[4]
@@ -234,14 +235,18 @@ def diff_tokens(
             continue
 
         for n, (otoks, ntoks) in enumerate(pieces):
+            old_anchor, old_after = (None, True) if otoks else _anchor(old, i1, i2, skip_old_pages)
+            new_anchor, new_after = (None, True) if ntoks else _anchor(new, j1, j2, skip_new_pages)
             changes.append(
                 Change(
                     id=len(changes) + 1,
                     kind=_kind(len(otoks), len(ntoks)),  # type: ignore[arg-type]
                     old_tokens=otoks,
                     new_tokens=ntoks,
-                    old_anchor=None if otoks else _anchor(old, i1, i2, skip_old_pages),
-                    new_anchor=None if ntoks else _anchor(new, j1, j2, skip_new_pages),
+                    old_anchor=old_anchor,
+                    new_anchor=new_anchor,
+                    old_anchor_after=old_after,
+                    new_anchor_after=new_after,
                     context_before=before if n == 0 else "",
                     context_after=after if n == len(pieces) - 1 else "",
                 )
@@ -269,12 +274,14 @@ def _kept_runs(
     return runs
 
 
-def _anchor(tokens: list[Token], lo: int, hi: int, skip_pages: frozenset[int] = frozenset()):
-    """Word next to a change point: the nearest preceding word, else the following one."""
+def _anchor(
+    tokens: list[Token], lo: int, hi: int, skip_pages: frozenset[int] = frozenset()
+) -> tuple[Word | None, bool]:
+    """Word next to a change point: (preceding word, True), else (following word, False)."""
     for i in range(lo - 1, -1, -1):
         if tokens[i].page not in skip_pages:
-            return tokens[i].words[-1]
+            return tokens[i].words[-1], True
     for i in range(hi, len(tokens)):
         if tokens[i].page not in skip_pages:
-            return tokens[i].words[0]
-    return None
+            return tokens[i].words[0], False
+    return None, True

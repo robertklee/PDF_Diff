@@ -55,6 +55,8 @@ class Page:
 class Document:
     path: str
     pages: list[Page]
+    # Kept so renderers can reopen encrypted files.
+    password: str | None = field(default=None, repr=False)
 
     @property
     def page_count(self) -> int:
@@ -79,7 +81,9 @@ class Change:
     """A text change.
 
     ``old_tokens`` is empty for inserts and ``new_tokens`` is empty for deletes.
-    The empty side gets an anchor word marking where the change happens.
+    The empty side gets an anchor word marking where the change happens: the
+    change is right after the anchor when ``*_anchor_after`` is true, else right
+    before it.
     """
 
     id: int
@@ -88,6 +92,8 @@ class Change:
     new_tokens: list[Token]
     old_anchor: Word | None = None
     new_anchor: Word | None = None
+    old_anchor_after: bool = True
+    new_anchor_after: bool = True
     context_before: str = ""
     context_after: str = ""
 
