@@ -14,7 +14,7 @@ python3 -m venv .venv
 
 ```sh
 pdfdiff OLD.pdf NEW.pdf                      # terminal report
-pdfdiff OLD.pdf NEW.pdf -f term,json -o out  # also write out/OLD_vs_NEW.diff.json
+pdfdiff OLD.pdf NEW.pdf -f term,json         # also write out/OLD_vs_NEW.diff.json
 pdfdiff OLD.pdf NEW.pdf -f pdf,combined      # annotated PDFs (see below)
 pdfdiff OLD.pdf NEW.pdf -f html              # side-by-side report for a browser
 ```
@@ -22,7 +22,7 @@ pdfdiff OLD.pdf NEW.pdf -f html              # side-by-side report for a browser
 | Option | Description |
 |---|---|
 | `-f, --format` | Comma-separated output formats: `term`, `json`, `pdf`, `combined`, `html` (default: `term`). |
-| `-o, --output-dir` | Directory for file outputs (default: current directory). |
+| `-o, --output-dir` | Directory for file outputs, created if needed (default: `out`, which is gitignored). |
 | `--ignore-case` | Ignore letter case. |
 | `--ignore-punctuation` | Ignore punctuation. |
 | `--no-dehyphenate` | Don't join words that are hyphenated across a line break. |

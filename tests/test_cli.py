@@ -99,3 +99,10 @@ def test_invalid_page_threshold_exit_2(pdf):
         assert e.code == 2
     else:
         raise AssertionError("expected SystemExit")
+
+
+def test_file_outputs_default_to_out_dir(pdf, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    a = pdf([["Same text here."]])
+    assert main([str(a), str(a), "-f", "json"]) == 0
+    assert (tmp_path / "out" / f"{a.stem}_vs_{a.stem}.diff.json").is_file()

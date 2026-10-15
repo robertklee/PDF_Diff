@@ -83,8 +83,8 @@ def build_parser() -> argparse.ArgumentParser:
         "html = self-contained side-by-side report",
     )
     p.add_argument(
-        "-o", "--output-dir", default=".",
-        help="directory for file outputs (default: current directory)",
+        "-o", "--output-dir", default="out",
+        help="directory for file outputs, created if needed (default: out)",
     )
     p.add_argument("--ignore-case", action="store_true", help="ignore letter case")
     p.add_argument("--ignore-punctuation", action="store_true", help="ignore punctuation")
