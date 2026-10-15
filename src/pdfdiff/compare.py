@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import os
 
-from .diff import diff_tokens
+from .align import analyze_pages
+from .diff import diff_tokens, token_opcodes
 from .extract import load_document
 from .model import CompareOptions, DiffResult, Document
 from .normalize import tokenize_document
@@ -35,9 +36,13 @@ def compare_documents(old: Document, new: Document, options: CompareOptions) -> 
             result.warnings.append(
                 f"{label} document pages without extractable text: {_ranges(empty)}"
             )
-    result.changes = diff_tokens(
-        tokenize_document(old, options), tokenize_document(new, options)
-    )
+    old_tokens = tokenize_document(old, options)
+    new_tokens = tokenize_document(new, options)
+    ops = token_opcodes(old_tokens, new_tokens)
+    pages = analyze_pages(old, new, old_tokens, new_tokens, ops, options.page_threshold)
+    result.page_changes = pages.page_changes
+    result.page_map = pages.page_map
+    result.changes = diff_tokens(old_tokens, new_tokens, ops, pages.skip_old, pages.skip_new)
     return result
 
 

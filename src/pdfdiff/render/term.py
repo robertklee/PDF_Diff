@@ -6,7 +6,7 @@ import os
 import sys
 from typing import TextIO
 
-from ..model import Change, DiffResult
+from ..model import Change, DiffResult, PageChange
 
 _RED = "\033[31m"
 _GREEN = "\033[32m"
@@ -39,6 +39,12 @@ def render(result: DiffResult, color: bool = False) -> str:
         lines.append(c(_YELLOW, f"warning: {w}"))
     lines.append("")
 
+    for pc in result.page_changes:
+        lines.append(c(_BOLD, f"[P{pc.id}] {_page_desc(pc)}"))
+        if pc.preview:
+            lines.append("    " + c(_GREEN if pc.kind == "page_inserted" else _RED, pc.preview))
+        lines.append("")
+
     for ch in result.changes:
         lines.append(c(_BOLD, f"[{ch.id}] {ch.kind}  {_loc(ch)}"))
         lines.append("    " + _inline(ch, c))
@@ -50,14 +56,20 @@ def render(result: DiffResult, color: bool = False) -> str:
 
 def summary_line(result: DiffResult) -> str:
     if result.identical:
-        return "No text differences found."
+        return "No differences found."
     counts = result.counts()
     parts = []
-    for key, name in (("replace", "replacement"), ("insert", "insertion"), ("delete", "deletion")):
+    for key, one, many in (
+        ("page_inserted", "page inserted", "pages inserted"),
+        ("page_deleted", "page deleted", "pages deleted"),
+        ("replace", "replacement", "replacements"),
+        ("insert", "insertion", "insertions"),
+        ("delete", "deletion", "deletions"),
+    ):
         n = counts[key]
         if n:
-            parts.append(f"{n} {name}{'s' if n != 1 else ''}")
-    n = len(result.changes)
+            parts.append(f"{n} {one if n == 1 else many}")
+    n = len(result.changes) + len(result.page_changes)
     return f"{n} change{'s' if n != 1 else ''}: " + ", ".join(parts)
 
 
@@ -65,6 +77,18 @@ def print_report(result: DiffResult, stream: TextIO = sys.stdout, color: bool | 
     if color is None:
         color = use_color(stream)
     stream.write(render(result, color=color))
+
+
+def _page_desc(pc: PageChange) -> str:
+    if pc.kind == "page_inserted":
+        where = f"after old p.{pc.after + 1}" if pc.after >= 0 else "at start"
+        desc = f"page inserted  new p.{pc.page + 1} ({where})"
+    else:
+        where = f"after new p.{pc.after + 1}" if pc.after >= 0 else "at start"
+        desc = f"page deleted  old p.{pc.page + 1} ({where})"
+    if not pc.word_count:
+        desc += "  [blank]"
+    return desc
 
 
 def _loc(ch: Change) -> str:

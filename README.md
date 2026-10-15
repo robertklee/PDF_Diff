@@ -24,6 +24,7 @@ pdfdiff OLD.pdf NEW.pdf -f term,json -o out  # also write out/OLD_vs_NEW.diff.js
 | `--ignore-case` | Ignore letter case. |
 | `--ignore-punctuation` | Ignore punctuation. |
 | `--no-dehyphenate` | Don't join words that are hyphenated across a line break. |
+| `--page-threshold F` | Report a page as inserted/deleted when at most this fraction of its words match the other document (default: `0.2`). |
 | `--password-old`, `--password-new` | Passwords for encrypted PDFs. |
 | `--no-color` | Disable colored output. Setting `NO_COLOR` does the same. |
 
@@ -40,13 +41,29 @@ Exit codes: `0` = no differences, `1` = differences found, `2` = error.
    Text that reflows across page breaks is not reported as a change.
 5. **Clean up:** short coincidental matches between edits (such as a lone "the") are
    absorbed, so each change reads as a whole.
+6. **Pages:** detected *after* the text diff, so reflowed text never causes a false page
+   insertion.
+   - A page counts as inserted or deleted when at most 20% (`--page-threshold`) of its
+     words match the other document. Its text is then reported as a page change, not
+     as text changes.
+   - Leftover pages between two matched pages are paired in order as rewritten pages,
+     including blank pages. Their text is diffed, and only the surplus counts as
+     inserted or deleted.
+   - The old-to-new page map is the in-order pairing that shares the most matched words.
 
 ## JSON output
 
 Schema version 1:
 
-- `summary`: change counts.
-- `changes[]`: one entry per change, with:
+- `summary`: change counts, including `pages_inserted` and `pages_deleted`.
+- `page_changes[]`: whole-page changes, with:
+  - `kind`: `page_inserted` or `page_deleted`.
+  - The page number (`new_page` or `old_page`) and its position in the other document
+    (`after_old_page` or `after_new_page`; `0` means at the start).
+  - `word_count` and a short text `preview`.
+- `page_map`: `[old, new]` page pairs in reading order. `null` means the page has no
+  counterpart.
+- `changes[]`: one entry per text change, with:
   - `kind`: `insert`, `delete`, or `replace`.
   - `old` and `new`: the text, pages, and one rectangle per line.
   - `anchor`: the location of an insertion or deletion point, on the side that has no text.
@@ -66,7 +83,6 @@ disabled (`pytest-socket`).
 
 ## Roadmap
 
-- Page alignment, with inserted and deleted page detection.
 - Annotated PDF output.
 - Side-by-side HTML report.
 - Ignoring headers and footers, and performance work.

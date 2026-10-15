@@ -7,7 +7,7 @@ import json
 from dataclasses import asdict
 
 from .. import __version__
-from ..model import Change, DiffResult, Document, Word, line_rects
+from ..model import Change, DiffResult, Document, PageChange, Word, line_rects
 
 SCHEMA_VERSION = 1
 
@@ -22,11 +22,15 @@ def to_dict(result: DiffResult) -> dict:
         "options": asdict(result.options),
         "summary": {
             "identical": result.identical,
-            "changes": len(result.changes),
+            "changes": len(result.changes) + len(result.page_changes),
             "insertions": counts["insert"],
             "deletions": counts["delete"],
             "replacements": counts["replace"],
+            "pages_inserted": counts["page_inserted"],
+            "pages_deleted": counts["page_deleted"],
         },
+        "page_changes": [_page_change(pc) for pc in result.page_changes],
+        "page_map": [[_p1(o), _p1(n)] for o, n in result.page_map],
         "changes": [_change(c) for c in result.changes],
         "warnings": list(result.warnings),
     }
@@ -71,4 +75,22 @@ def _change(c: Change) -> dict:
         "old": _side(c.old_text, c.old_words, c.old_pages, c.old_anchor),
         "new": _side(c.new_text, c.new_words, c.new_pages, c.new_anchor),
         "context": {"before": c.context_before, "after": c.context_after},
+    }
+
+
+def _p1(page: int | None) -> int | None:
+    return None if page is None else page + 1
+
+
+def _page_change(pc: PageChange) -> dict:
+    if pc.kind == "page_inserted":
+        loc = {"new_page": pc.page + 1, "after_old_page": pc.after + 1}
+    else:
+        loc = {"old_page": pc.page + 1, "after_new_page": pc.after + 1}
+    return {
+        "id": pc.id,
+        "kind": pc.kind,
+        **loc,
+        "word_count": pc.word_count,
+        "preview": pc.preview,
     }

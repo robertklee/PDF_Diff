@@ -28,6 +28,16 @@ def _formats(value: str) -> list[str]:
     return fmts
 
 
+def _fraction(value: str) -> float:
+    try:
+        f = float(value)
+    except ValueError:
+        f = -1.0
+    if not 0.0 <= f < 1.0:
+        raise argparse.ArgumentTypeError(f"must be a number in [0, 1): {value!r}")
+    return f
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="pdfdiff",
@@ -49,6 +59,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-dehyphenate", action="store_true",
         help="do not join words hyphenated across line breaks",
     )
+    p.add_argument(
+        "--page-threshold", type=_fraction, default=CompareOptions.page_threshold,
+        metavar="FRACTION",
+        help="report a page as inserted/deleted when at most this fraction of its words "
+        "match the other document (default: %(default)s)",
+    )
     p.add_argument("--password-old", help="password for the old PDF")
     p.add_argument("--password-new", help="password for the new PDF")
     p.add_argument("--no-color", action="store_true", help="disable colored terminal output")
@@ -68,6 +84,7 @@ def main(argv: list[str] | None = None) -> int:
         ignore_case=args.ignore_case,
         ignore_punctuation=args.ignore_punctuation,
         dehyphenate=not args.no_dehyphenate,
+        page_threshold=args.page_threshold,
     )
     try:
         result = compare(args.old, args.new, options, args.password_old, args.password_new)

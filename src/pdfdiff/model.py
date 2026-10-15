@@ -66,6 +66,9 @@ class CompareOptions:
     ignore_case: bool = False
     ignore_punctuation: bool = False
     dehyphenate: bool = True
+    # A page is reported as inserted/deleted when at most this fraction of its
+    # words match the other document.
+    page_threshold: float = 0.2
 
 
 ChangeKind = Literal["insert", "delete", "replace"]
@@ -113,22 +116,51 @@ class Change:
         return _pages(self.new_words, self.new_anchor)
 
 
+PageChangeKind = Literal["page_inserted", "page_deleted"]
+
+
+@dataclass
+class PageChange:
+    """A whole page present in only one document. Page numbers are 0-based.
+
+    ``page`` is in the new document for insertions and in the old document for
+    deletions. ``after`` is the page in the *other* document it follows (-1 = before
+    the first page).
+    """
+
+    id: int
+    kind: PageChangeKind
+    page: int
+    after: int
+    word_count: int
+    preview: str
+
+
+# Alignment of the two page sequences, in reading order: (old, new) with None for
+# a page that has no counterpart.
+PageMap = list[tuple[int | None, int | None]]
+
+
 @dataclass
 class DiffResult:
     old: Document
     new: Document
     options: CompareOptions
     changes: list[Change] = field(default_factory=list)
+    page_changes: list[PageChange] = field(default_factory=list)
+    page_map: PageMap = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
 
     @property
     def identical(self) -> bool:
-        return not self.changes
+        return not self.changes and not self.page_changes
 
     def counts(self) -> dict[str, int]:
-        c = {"insert": 0, "delete": 0, "replace": 0}
+        c = {"insert": 0, "delete": 0, "replace": 0, "page_inserted": 0, "page_deleted": 0}
         for ch in self.changes:
             c[ch.kind] += 1
+        for pc in self.page_changes:
+            c[pc.kind] += 1
         return c
 
 

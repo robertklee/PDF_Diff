@@ -13,6 +13,22 @@ LOREM = [
 ]
 
 
+_VOCAB = (
+    "alpha bravo charlie delta echo foxtrot golf hotel india juliet kilo lima mike "
+    "november oscar papa quebec romeo sierra tango uniform victor whiskey xray yankee "
+    "zulu amber basil cedar dune ember fjord grove heron iris jade kelp lotus maple "
+    "nectar onyx pearl quartz raven sage thistle umber violet willow yarrow zephyr"
+).split()
+
+
+def para(seed: int, n: int = 60) -> str:
+    """Deterministic pseudo-random paragraph; different seeds share almost no 2-grams."""
+    import random
+
+    rng = random.Random(seed)
+    return " ".join(rng.choice(_VOCAB) + str(seed) * (i % 3 == 0) for i in range(n)) + "."
+
+
 def make_pdf(path: Path, pages: list[list[str]], *, password: str | None = None) -> Path:
     """Write a PDF where each page is a list of paragraphs (one text block each)."""
     doc = pymupdf.open()

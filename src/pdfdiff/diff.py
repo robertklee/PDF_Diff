@@ -190,8 +190,20 @@ def token_opcodes(old: list[Token], new: list[Token]) -> list[Opcode]:
     return cleanup_semantic(ops)
 
 
-def diff_tokens(old: list[Token], new: list[Token]) -> list[Change]:
-    ops = token_opcodes(old, new)
+def diff_tokens(
+    old: list[Token],
+    new: list[Token],
+    ops: list[Opcode] | None = None,
+    skip_old_pages: frozenset[int] = frozenset(),
+    skip_new_pages: frozenset[int] = frozenset(),
+) -> list[Change]:
+    """Build text changes from token opcodes.
+
+    Tokens on ``skip_*_pages`` (whole pages reported as inserted/deleted) are
+    left out so they are not reported twice.
+    """
+    if ops is None:
+        ops = token_opcodes(old, new)
     changes: list[Change] = []
     for k, (tag, i1, i2, j1, j2) in enumerate(ops):
         if tag == "equal":
@@ -204,25 +216,65 @@ def diff_tokens(old: list[Token], new: list[Token]) -> list[Change]:
         if k + 1 < len(ops) and ops[k + 1][0] == "equal":
             _, _, _, nj1, nj2 = ops[k + 1]
             after = " ".join(t.text for t in new[nj1:min(nj2, nj1 + _CONTEXT_TOKENS)])
-        changes.append(
-            Change(
-                id=len(changes) + 1,
-                kind=tag,  # type: ignore[arg-type]
-                old_tokens=old[i1:i2],
-                new_tokens=new[j1:j2],
-                old_anchor=_anchor(old, i1) if i1 == i2 else None,
-                new_anchor=_anchor(new, j1) if j1 == j2 else None,
-                context_before=before,
-                context_after=after,
+
+        old_runs = _kept_runs(old, i1, i2, skip_old_pages)
+        new_runs = _kept_runs(new, j1, j2, skip_new_pages)
+        if old_runs and new_runs:
+            pieces = [
+                (
+                    [t for s, e in old_runs for t in old[s:e]],
+                    [t for s, e in new_runs for t in new[s:e]],
+                )
+            ]
+        elif old_runs:
+            pieces = [(old[s:e], []) for s, e in old_runs]
+        elif new_runs:
+            pieces = [([], new[s:e]) for s, e in new_runs]
+        else:
+            continue
+
+        for n, (otoks, ntoks) in enumerate(pieces):
+            changes.append(
+                Change(
+                    id=len(changes) + 1,
+                    kind=_kind(len(otoks), len(ntoks)),  # type: ignore[arg-type]
+                    old_tokens=otoks,
+                    new_tokens=ntoks,
+                    old_anchor=None if otoks else _anchor(old, i1, i2, skip_old_pages),
+                    new_anchor=None if ntoks else _anchor(new, j1, j2, skip_new_pages),
+                    context_before=before if n == 0 else "",
+                    context_after=after if n == len(pieces) - 1 else "",
+                )
             )
-        )
     return changes
 
 
-def _anchor(tokens: list[Token], idx: int):
-    """Word next to an insertion point: the preceding word, else the following one."""
-    if idx > 0:
-        return tokens[idx - 1].words[-1]
-    if idx < len(tokens):
-        return tokens[idx].words[0]
+def _kept_runs(
+    tokens: list[Token], lo: int, hi: int, skip_pages: frozenset[int]
+) -> list[tuple[int, int]]:
+    """Contiguous index runs in [lo, hi) whose tokens are not on skipped pages."""
+    if not skip_pages:
+        return [(lo, hi)] if hi > lo else []
+    runs: list[tuple[int, int]] = []
+    start = None
+    for i in range(lo, hi):
+        if tokens[i].page in skip_pages:
+            if start is not None:
+                runs.append((start, i))
+                start = None
+        elif start is None:
+            start = i
+    if start is not None:
+        runs.append((start, hi))
+    return runs
+
+
+def _anchor(tokens: list[Token], lo: int, hi: int, skip_pages: frozenset[int] = frozenset()):
+    """Word next to a change point: the nearest preceding word, else the following one."""
+    for i in range(lo - 1, -1, -1):
+        if tokens[i].page not in skip_pages:
+            return tokens[i].words[-1]
+    for i in range(hi, len(tokens)):
+        if tokens[i].page not in skip_pages:
+            return tokens[i].words[0]
     return None

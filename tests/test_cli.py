@@ -8,7 +8,7 @@ from .conftest import LOREM
 def test_identical_exit_0(pdf, capsys):
     a = pdf([LOREM])
     assert main([str(a), str(a), "--no-color"]) == 0
-    assert "No text differences found." in capsys.readouterr().out
+    assert "No differences found." in capsys.readouterr().out
 
 
 def test_differences_exit_1_and_term_output(pdf, capsys):
@@ -35,7 +35,11 @@ def test_json_output(pdf, tmp_path, capsys):
         "insertions": 1,
         "deletions": 0,
         "replacements": 1,
+        "pages_inserted": 0,
+        "pages_deleted": 0,
     }
+    assert data["page_changes"] == []
+    assert data["page_map"] == [[1, 1]]
     rep, ins = data["changes"]
     assert (rep["old"]["text"], rep["new"]["text"]) == ("lazy dog", "sleepy cat")
     assert rep["old"]["rects"][0]["page"] == 1
@@ -57,6 +61,40 @@ def test_invalid_format_exit_2(pdf):
     a = pdf([LOREM])
     try:
         main([str(a), str(a), "-f", "xml"])
+    except SystemExit as e:
+        assert e.code == 2
+    else:
+        raise AssertionError("expected SystemExit")
+
+
+def test_page_changes_in_outputs(pdf, tmp_path, capsys):
+    from .conftest import para
+
+    a = pdf([[para(1)], [para(2)]])
+    b = pdf([[para(1)], [para(99)], [para(2)]])
+    assert main([str(a), str(b), "-f", "term,json", "-o", str(tmp_path), "--no-color"]) == 1
+    out = capsys.readouterr().out
+    assert "[P1] page inserted  new p.2 (after old p.1)" in out
+    assert "1 change: 1 page inserted" in out
+    data = json.loads((tmp_path / f"{a.stem}_vs_{b.stem}.diff.json").read_text())
+    assert data["page_changes"] == [
+        {
+            "id": 1,
+            "kind": "page_inserted",
+            "new_page": 2,
+            "after_old_page": 1,
+            "word_count": 60,
+            "preview": " ".join(para(99).split()[:12]) + " …",
+        }
+    ]
+    assert data["page_map"] == [[1, 1], [None, 2], [2, 3]]
+    assert data["changes"] == []
+
+
+def test_invalid_page_threshold_exit_2(pdf):
+    a = pdf([LOREM])
+    try:
+        main([str(a), str(a), "--page-threshold", "1.5"])
     except SystemExit as e:
         assert e.code == 2
     else:
