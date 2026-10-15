@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pdfdiff"
+version = "0.1.0"
+description = "Offline PDF text comparison tool (Acrobat-style compare)"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["pymupdf>=1.24"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pytest-socket>=0.7"]
+
+[project.scripts]
+pdfdiff = "pdfdiff.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--disable-socket"
+filterwarnings = ["ignore:builtin type .* has no __module__ attribute:DeprecationWarning"]
