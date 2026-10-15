@@ -5,19 +5,21 @@ but form fields and checkbox marks are often drawn after everything else, so a f
 "X" ends up at the end of the page instead of next to its label. Several identical marks
 then can't be told apart and the diff pairs the wrong ones.
 
-This module moves such small "satellite" blocks into the row of text they sit on, and
-orders the lines within a row from left to right.
+This module moves such short "satellite" rows into the row of longer text they sit on
+(between its words, or right next to them), and orders the lines within a row from left
+to right.
 """
 
 from __future__ import annotations
 
 import unicodedata
+from bisect import bisect_left, bisect_right
 
 # Raw word tuple: (x0, y0, x1, y1, text, block, line)
 RawWord = tuple
 
-# A satellite is a block of at most this many words, each at most this many characters
-# (checkbox marks, bullets, short table cells). Longer text is distinctive enough to be
+# A satellite row has at most this many words, each at most this many characters
+# (checkbox marks, option letters, bullets). Longer text is distinctive enough to be
 # matched correctly wherever it appears.
 SATELLITE_MAX_WORDS = 3
 SATELLITE_MAX_CHARS = 3
@@ -95,37 +97,46 @@ def reading_order(words: list[RawWord]) -> list[RawWord]:
                 brows.append([ln])
         rows[b] = brows
 
-    satellites = [
-        b for b, brows in rows.items()
-        if len(brows) == 1
-        and sum(len(ln.words) for ln in brows[0]) <= SATELLITE_MAX_WORDS
-        and all(len(w[4]) <= SATELLITE_MAX_CHARS for ln in brows[0] for w in ln.words)
-    ]
-    sat_set = set(satellites)
-    hosts = [(b, row, ln) for b, brows in rows.items() if b not in sat_set for row in brows for ln in row]
+    # Short rows (checkbox marks, option letters, short fill-ins) are placed on the row
+    # of longer text they sit on, whichever block MuPDF put them in: the grouping of
+    # nearby marks into blocks differs between otherwise identical versions.
+    def short(row: list[_Line]) -> bool:
+        ws = [w for ln in row for w in ln.words]
+        return len(ws) <= SATELLITE_MAX_WORDS and all(len(w[4]) <= SATELLITE_MAX_CHARS for w in ws)
 
-    attached: set[int] = set()
-    for s in satellites:
-        sat_row = rows[s][0]
-        probe = sat_row[0]
-        best = None
-        for b, row, ln in hosts:
-            if _same_row(probe, ln):
-                d = _gap(probe, ln)
-                if best is None or d < best[0]:
-                    best = (d, b, row)
-        if best is None:
-            continue
-        _, b, row = best
+    hosts = sorted(
+        ((b, row, ln) for b, brows in rows.items() for row in brows if not short(row) for ln in row),
+        key=lambda h: h[2].y0,
+    )
+    host_y0 = [h[2].y0 for h in hosts]
+    max_h = max((h[2].height for h in hosts), default=0.0)
+    moves = []
+    for s, brows in rows.items():
+        for sat_row in brows:
+            if not short(sat_row):
+                continue
+            probe = _Line(s, -1)
+            for ln in sat_row:
+                for w in ln.words:
+                    probe.add(w)
+            lo, hi = bisect_left(host_y0, probe.y0 - max_h), bisect_right(host_y0, probe.y1)
+            same = [(b, row, ln) for b, row, ln in hosts[lo:hi] if _same_row(probe, ln)]
+            if not same:
+                continue
+            between = any(ln.x1 <= probe.x0 + 1 for _, _, ln in same) and any(
+                ln.x0 >= probe.x1 - 1 for _, _, ln in same
+            )
+            d, b, row = min(((_gap(probe, ln), b, row) for b, row, ln in same), key=lambda t: t[0])
+            if between or d <= probe.height:
+                moves.append((s, sat_row, b, row))
+    for s, sat_row, b, row in moves:
+        rows[s] = [r for r in rows[s] if r is not sat_row]
         for ln in sat_row:
             ln.words = [(*w[:5], b, SATELLITE_LINE_BASE + s * 100 + ln.line) for w in ln.words]
             row.append(ln)
-        attached.add(s)
 
     out: list[RawWord] = []
-    for b, brows in rows.items():
-        if b in attached:
-            continue
+    for brows in rows.values():
         for row in brows:
             if len(row) > 1 and _sortable(row):
                 row = sorted(row, key=lambda ln: ln.x0)

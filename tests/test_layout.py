@@ -34,8 +34,8 @@ def make_form(path, checks, overlay):
     return path
 
 
-def w(x0, y0, x1, y1, text, block, line):
-    return (x0, y0, x1, y1, text, block, line)
+def w(x0, y0, x1, y1, text, block=None, line=None):
+    return (x0, y0, x1, y1, text) if block is None else (x0, y0, x1, y1, text, block, line)
 
 
 def texts(words):
@@ -54,6 +54,28 @@ def test_satellite_moves_into_its_row_in_x_order():
     assert texts(out) == ["Question", "Yes", "X", "No", "Next"]
     x = out[2]
     assert x[5] == 0 and x[6] >= SATELLITE_LINE_BASE  # joins the host block, own line
+
+
+def test_marks_are_placed_the_same_however_mupdf_groups_them():
+    rows = [
+        w(40, 100, 200, 110, "Account", 0, 0), w(270, 100, 290, 110, "b", 1, 0), w(330, 100, 400, 110, "closed", 0, 1),
+        w(40, 112, 200, 122, "Jointly", 2, 0), w(270, 112, 290, 122, "d", 3, 0), w(330, 112, 400, 122, "owned", 2, 1),
+    ]
+    marks = [w(300, 100, 307, 110, "X"), w(300, 112, 307, 122, "X")]
+    grouped = rows + [w(375, 88, 420, 98, "4516191", 9, 0)] + [(*m, 9, k + 1) for k, m in enumerate(marks)]
+    separate = rows + [w(375, 88, 420, 98, "4516191", 9, 0)] + [(*m, 10 + k, 0) for k, m in enumerate(marks)]
+    expected = ["Account", "b", "X", "closed", "Jointly", "d", "X", "owned", "4516191"]
+    assert texts(reading_order(grouped)) == expected
+    assert texts(reading_order(separate)) == expected
+
+
+def test_short_rows_do_not_jump_across_a_column_gap():
+    words = [
+        w(72, 88, 280, 100, "Left column text", 0, 0),
+        w(72, 100, 90, 112, "it.", 0, 1),  # short last line of a paragraph
+        w(320, 100, 540, 112, "Right column text", 1, 0),
+    ]
+    assert texts(reading_order(words)) == texts(words)
 
 
 def test_lines_of_a_row_are_sorted_left_to_right():

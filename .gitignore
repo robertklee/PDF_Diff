@@ -5,3 +5,6 @@ __pycache__/
 build/
 dist/
 *.diff.json
+*.diff.html
+*.diff.*.pdf
+out/
