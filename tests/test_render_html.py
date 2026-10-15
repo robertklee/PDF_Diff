@@ -77,6 +77,23 @@ def test_sidebar_and_marks(edited):
     assert 'Replaced (1)' in report and 'Inserted (1)' in report and 'Deleted (1)' in report
 
 
+def test_leading_mark_caret_stays_on_its_row(leading_mark_diff, tmp_path):
+    result = leading_mark_diff
+    [change] = result.changes
+    word = (change.old_words or change.new_words)[0]
+    empty_side = "new" if change.kind == "delete" else "old"
+    out = tmp_path / "report.html"
+    html.write(result, str(out), jobs=1)
+    [(_, pno, _, [mark])] = [cell for cell in cells(out.read_text()) if cell[0] == empty_side]
+    assert pno == word.page + 1
+    assert mark[1:3] == ("caret", change.kind)
+    left, top, width, height = box(mark[4])
+    x0, y0, _, y1 = word.bbox
+    assert left + width / 2 == pytest.approx(x0 / 612, abs=0.00001)
+    assert top == pytest.approx(y0 / 792, abs=0.00001)
+    assert height == pytest.approx((y1 - y0) / 792, abs=0.00001)
+
+
 @pytest.mark.parametrize("rotation", [0, 90, 180, 270])
 def test_highlights_cover_the_rendered_text(pdf, rotation):
     old = pdf([LOREM])

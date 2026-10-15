@@ -75,6 +75,22 @@ def test_annotated_copies(sample):
     assert abs(caret_old.rect.x0 + caret_old.rect.width / 2 - five.x1) < 2
 
 
+def test_leading_mark_caret_stays_on_its_row(leading_mark_diff, tmp_path):
+    result = leading_mark_diff
+    [change] = result.changes
+    word = (change.old_words or change.new_words)[0]
+    old_out, new_out = tmp_path / "o.pdf", tmp_path / "n.pdf"
+    render_pdf.write_annotated(result, str(old_out), str(new_out))
+    empty_out = new_out if change.kind == "delete" else old_out
+    with pymupdf.open(empty_out) as doc:
+        [(kind, _, caret)] = annots(doc, word.page)
+        assert kind == "Caret"
+        x0, y0, _, y1 = word.bbox
+        center = (caret.rect.tl + caret.rect.br) / 2
+        assert center.x == pytest.approx(x0, abs=0.01)
+        assert center.y == pytest.approx(y1 - 0.25 * (y1 - y0), abs=0.01)
+
+
 def test_page_banners_and_pointers(pdf, tmp_path):
     a = pdf([[para(1)], [para(2)], [para(3)]])
     b = pdf([[para(1)], [para(9)], [para(3)]])

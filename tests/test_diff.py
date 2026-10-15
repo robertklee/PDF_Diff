@@ -98,9 +98,9 @@ def test_large_input_uses_anchors_and_finds_minimal_change():
     assert [o for o in ops if o[0] != "equal"] == [("replace", 10000, 10001, 10000, 10001)]
 
 
-def _toks(text, page=0, block=0):
+def _toks(text, page=0, block=0, x=0, y=0):
     return [
-        Token(norm=t, text=t, words=(Word(t, page, (i, 0, i + 1, 1), block, 0),))
+        Token(norm=t, text=t, words=(Word(t, page, (x + i, y, x + i + 1, y + 1), block, 0),))
         for i, t in enumerate(text.split())
     ]
 
@@ -120,3 +120,56 @@ def test_diff_tokens_reflow_across_blocks_is_identical():
     old = _toks("a b c d", block=0) + _toks("e f g h", block=1)
     new = _toks("a b c", block=0) + _toks("d e f g h", block=1)
     assert diff_tokens(old, new) == []
+
+
+@pytest.mark.parametrize("page", [0, 1])
+@pytest.mark.parametrize("shift_y", [0, 30])
+def test_leading_deletion_follows_label_across_rows_and_pages(page, shift_y):
+    previous = _toks("previous", y=10)
+    old = previous + _toks("X", page=page, x=74.5, y=40) + _toks("label", page=page, x=90, y=40)
+    new = previous + _toks("label", page=page, x=90, y=40 + shift_y)
+    [change] = diff_tokens(old, new)
+    assert change.old_text == "X"
+    assert change.new_anchor == new[-1].words[0]
+    assert not change.new_anchor_after
+    assert change.new_caret_x == 74.5
+
+
+def test_leading_deletion_does_not_copy_source_x_when_text_reflows():
+    previous = _toks("previous", y=10)
+    old = previous + _toks("X", x=72, y=40) + _toks("label", x=150, y=40)
+    new = previous + _toks("label", x=72, y=40)
+    [change] = diff_tokens(old, new)
+    assert change.new_anchor == new[-1].words[0]
+    assert not change.new_anchor_after
+    assert change.new_caret_x is None
+
+
+def test_leading_sentence_keeps_existing_anchor():
+    previous = _toks("previous", y=10)
+    old = previous + _toks("label", x=90, y=40)
+    new = previous + _toks("Brand new sentence.", x=72, y=40) + _toks("label", x=90, y=40)
+    [change] = diff_tokens(old, new)
+    assert change.old_anchor == old[0].words[0]
+    assert change.old_anchor_after
+    assert change.old_caret_x is None
+
+
+def test_trailing_deletion_keeps_preceding_row_anchor():
+    previous = _toks("label", x=90, y=10)
+    following = _toks("following", x=90, y=40)
+    old = previous + _toks("X", x=110, y=10) + following
+    new = previous + following
+    [change] = diff_tokens(old, new)
+    assert change.new_anchor == new[0].words[0]
+    assert change.new_anchor_after
+    assert change.new_caret_x is None
+
+
+def test_leading_deletion_does_not_anchor_to_skipped_page():
+    previous = _toks("previous", y=10)
+    old = previous + _toks("X", x=74.5, y=40) + _toks("label", x=90, y=40)
+    new = previous + _toks("label", page=1, x=90, y=40)
+    [change] = diff_tokens(old, new, skip_new_pages=frozenset({1}))
+    assert change.new_anchor == new[0].words[0]
+    assert change.new_anchor_after

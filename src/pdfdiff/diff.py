@@ -323,9 +323,17 @@ def diff_tokens(
         else:
             continue
 
+        old_next = old[i2].words[0] if i2 < len(old) else None
+        new_next = new[j2].words[0] if j2 < len(new) else None
         for n, (otoks, ntoks) in enumerate(pieces):
-            old_anchor, old_after = (None, True) if otoks else _anchor(old, i1, i2, skip_old_pages)
-            new_anchor, new_after = (None, True) if ntoks else _anchor(new, j1, j2, skip_new_pages)
+            old_anchor, old_after, old_x = (
+                (None, True, None) if otoks
+                else _change_point(old, i1, i2, skip_old_pages, ntoks, new_next)
+            )
+            new_anchor, new_after, new_x = (
+                (None, True, None) if ntoks
+                else _change_point(new, j1, j2, skip_new_pages, otoks, old_next)
+            )
             changes.append(
                 Change(
                     id=len(changes) + 1,
@@ -336,8 +344,8 @@ def diff_tokens(
                     new_anchor=new_anchor,
                     old_anchor_after=old_after,
                     new_anchor_after=new_after,
-                    old_caret_x=None if otoks else _caret_x(old, i1, i2, skip_old_pages, ntoks),
-                    new_caret_x=None if ntoks else _caret_x(new, j1, j2, skip_new_pages, otoks),
+                    old_caret_x=old_x,
+                    new_caret_x=new_x,
                     context_before=before if n == 0 else "",
                     context_after=after if n == len(pieces) - 1 else "",
                 )
@@ -368,6 +376,32 @@ def _kept_runs(
 def _same_row(a: BBox, b: BBox) -> bool:
     ha, hb = a[3] - a[1], b[3] - b[1]
     return ha > 0 and hb > 0 and min(a[3], b[3]) - max(a[1], b[1]) >= 0.5 * min(ha, hb)
+
+
+def _change_point(
+    tokens: list[Token], lo: int, hi: int, skip_pages: frozenset[int],
+    other: list[Token], following: Word | None,
+) -> tuple[Word | None, bool, float | None]:
+    """Keep short leading fields on their label's row without re-anchoring prose."""
+    if (
+        len(other) == 1 and len(other[0].norm) <= _SHORT_TOKEN
+        and following is not None and hi < len(tokens)
+    ):
+        first = other[0].words[0]
+        nxt = tokens[hi].words[0]
+        prev = tokens[lo - 1].words[-1] if lo else None
+        if (
+            nxt.page not in skip_pages
+            and first.page == following.page
+            and _same_row(first.bbox, following.bbox)
+            and first.bbox[2] <= following.bbox[0] + 1.0
+            and (prev is None or prev.page != nxt.page or not _same_row(prev.bbox, nxt.bbox))
+        ):
+            # Keep the source x only when the following word did not shift horizontally.
+            x = first.bbox[0] if abs(nxt.bbox[0] - following.bbox[0]) <= 1.0 else None
+            return nxt, False, x
+    anchor, after = _anchor(tokens, lo, hi, skip_pages)
+    return anchor, after, _caret_x(tokens, lo, hi, skip_pages, other)
 
 
 def _caret_x(

@@ -100,8 +100,8 @@ class Change:
     ``old_tokens`` is empty for inserts and ``new_tokens`` is empty for deletes.
     The empty side gets an anchor word marking where the change happens: the
     change is right after the anchor when ``*_anchor_after`` is true, else right
-    before it. ``*_caret_x`` overrides the anchor's x position when the change point
-    sits in a gap between two words on the same row, such as an empty form field.
+    before it. ``*_caret_x`` overrides the anchor's x position for an empty field
+    before or between words on the same row.
     """
 
     id: int

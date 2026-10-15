@@ -73,3 +73,36 @@ def pdf(tmp_path):
         return make_pdf(tmp_path / f"doc{counter['n']}.pdf", pages, **kwargs)
 
     return _make
+
+
+@pytest.fixture(params=[
+    pytest.param(
+        (kind, row, overlay),
+        id=f"{kind}-row{row}-{'overlay' if overlay else 'inline'}",
+    )
+    for kind in ("delete", "insert")
+    for row in range(3)
+    for overlay in (False, True)
+])
+def leading_mark_diff(request, tmp_path):
+    from pdfdiff import compare
+
+    kind, changed_row, overlay = request.param
+    paths = [tmp_path / "old.pdf", tmp_path / "new.pdf"]
+    for side, path in zip(("old", "new"), paths):
+        with pymupdf.open() as doc:
+            page = doc.new_page(width=612, height=792)
+            marks = []
+            for row, label in enumerate(("First option", "Second option", "Third option")):
+                y = 100 + row * 30
+                page.draw_rect(pymupdf.Rect(72, y - 10, 84, y + 2))
+                if row != changed_row or side == ("old" if kind == "delete" else "new"):
+                    if overlay:
+                        marks.append((74.5, y))
+                    else:
+                        page.insert_text((74.5, y), "X", fontsize=11)
+                page.insert_text((90, y), label, fontsize=11)
+            for point in marks:
+                page.insert_text(point, "X", fontsize=11)
+            doc.save(path)
+    return compare(*paths)

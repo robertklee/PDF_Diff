@@ -136,3 +136,32 @@ def test_json_anchor_has_caret_x_for_form_marks(tmp_path):
     (change,) = to_dict(compare(old, new))["changes"]
     assert change["kind"] == "insert"
     assert change["old"]["anchor"]["caret_x"] == change["new"]["rects"][0]["bbox"][0]
+
+
+def test_leading_mark_anchors_to_its_own_row(leading_mark_diff):
+    [change] = leading_mark_diff.changes
+    if change.kind == "delete":
+        assert change.old_text == "X"
+        word = change.old_words[0]
+        anchor, after, x = change.new_anchor, change.new_anchor_after, change.new_caret_x
+    else:
+        assert change.new_text == "X"
+        word = change.new_words[0]
+        anchor, after, x = change.old_anchor, change.old_anchor_after, change.old_caret_x
+    assert anchor.page == word.page
+    assert (anchor.bbox[1], anchor.bbox[3]) == pytest.approx((word.bbox[1], word.bbox[3]))
+    assert not after
+    assert x == pytest.approx(word.bbox[0])
+
+
+def test_leading_mark_json_anchor_stays_on_its_row(leading_mark_diff):
+    from pdfdiff.render.jsonfmt import to_dict
+
+    [change] = leading_mark_diff.changes
+    word = (change.old_words or change.new_words)[0]
+    side = "new" if change.kind == "delete" else "old"
+    [entry] = to_dict(leading_mark_diff)["changes"]
+    anchor = entry[side]["anchor"]
+    assert anchor["page"] == word.page + 1
+    assert anchor["bbox"][1] == round(word.bbox[1], 2)
+    assert anchor["caret_x"] == round(word.bbox[0], 2)
