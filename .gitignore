@@ -8,3 +8,6 @@ dist/
 *.diff.html
 *.diff.*.pdf
 out/
+
+.DS_Store
+Thumbs.db
