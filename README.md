@@ -94,6 +94,12 @@ compare takes about 2.7 s, and about 5 s with `-f html`.
 | `combined` | `OLD_vs_NEW.diff.combined.pdf` | A summary page listing every change (each entry links to its page), then the matching old and new pages side by side, one pair per page. |
 | `html` | `OLD_vs_NEW.diff.html` | A single-file report: the change list on the left, and the old and new pages side by side on the right. |
 
+### PDF output
+
+A side-by-side page from the combined PDF (`-f combined`), using sample release briefs:
+
+![Combined PDF comparison showing replacements in blue, deletions in red, insertions in green, and checkbox changes.](docs/screenshots/pdf-diff.png)
+
 In the annotated PDFs:
 
 - Changed text is highlighted: green for inserted, red for deleted, blue for replaced.
@@ -104,6 +110,12 @@ In the annotated PDFs:
 - Annotations appear in any PDF viewer's comment list. They are added on top of the
   original page content, which is otherwise unchanged.
 - Rotated pages and pages with a crop box are handled.
+
+### HTML report
+
+The same comparison in the browser (`-f html`), with the change list and navigation controls:
+
+![HTML report showing the change list and filters on the left, navigation and zoom controls at the top, and matching old and new pages side by side.](docs/screenshots/html-diff.png)
 
 The HTML report:
 
