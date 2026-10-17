@@ -84,7 +84,7 @@ def test_leading_mark_caret_stays_on_its_row(leading_mark_diff, tmp_path):
     empty_side = "new" if change.kind == "delete" else "old"
     out = tmp_path / "report.html"
     html.write(result, str(out), jobs=1)
-    [(_, pno, _, [mark])] = [cell for cell in cells(out.read_text()) if cell[0] == empty_side]
+    [(_, pno, _, [mark])] = [cell for cell in cells(out.read_text(encoding="utf-8")) if cell[0] == empty_side]
     assert pno == word.page + 1
     assert mark[1:3] == ("caret", change.kind)
     left, top, width, height = box(mark[4])
@@ -161,7 +161,7 @@ def test_cli_html(edited, tmp_path):
     old, new = edited
     assert main([str(old), str(new), "-f", "html", "-o", str(tmp_path), "--dpi", "50"]) == 1
     path = tmp_path / f"{old.stem}_vs_{new.stem}.diff.html"
-    pix = pixmap(images(path.read_text())[0])
+    pix = pixmap(images(path.read_text(encoding="utf-8"))[0])
     assert pix.width == round(612 * 50 / 72)
 
 

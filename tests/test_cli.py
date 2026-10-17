@@ -27,7 +27,7 @@ def test_json_output(pdf, tmp_path, capsys):
     b = pdf([[LOREM[0].replace("lazy dog", "sleepy cat")] + LOREM[1:] + ["Extra para."]])
     outdir = tmp_path / "out"
     assert main([str(a), str(b), "-f", "json", "-o", str(outdir)]) == 1
-    data = json.loads((outdir / f"{a.stem}_vs_{b.stem}.diff.json").read_text())
+    data = json.loads((outdir / f"{a.stem}_vs_{b.stem}.diff.json").read_text(encoding="utf-8"))
     assert data["schema"] == 1
     assert data["summary"] == {
         "identical": False,
@@ -76,7 +76,7 @@ def test_page_changes_in_outputs(pdf, tmp_path, capsys):
     out = capsys.readouterr().out
     assert "[P1] page inserted  new p.2 (after old p.1)" in out
     assert "1 change: 1 page inserted" in out
-    data = json.loads((tmp_path / f"{a.stem}_vs_{b.stem}.diff.json").read_text())
+    data = json.loads((tmp_path / f"{a.stem}_vs_{b.stem}.diff.json").read_text(encoding="utf-8"))
     assert data["page_changes"] == [
         {
             "id": 1,
